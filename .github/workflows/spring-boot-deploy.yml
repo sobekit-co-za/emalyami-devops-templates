@@ -16,6 +16,13 @@ on:
         required: false
         type: string
         default: '17'
+    secrets:
+      VAULT_ADDR:
+        required: true
+      VAULT_ROLE_ID:
+        required: true
+      VAULT_SECRET_ID:
+        required: true
 
 permissions:
   contents: read
@@ -78,7 +85,6 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
 
       - name: Deploy to ${{ matrix.server.name }}
         run: |
