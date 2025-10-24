@@ -1,0 +1,104 @@
+name: Deploy Spring Boot to Production
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+      jar_name:
+        required: true
+        type: string
+      working_dir:
+        required: true
+        type: string
+      java_version:
+        required: false
+        type: string
+        default: '17'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/${{ inputs.jar_name }}
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        server:
+          - { ip: 102.130.120.173, name: serv5 }
+          - { ip: 102.218.215.254, name: serv6 }
+      max-parallel: 1
+    
+    steps:
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+
+      - name: Import secrets from Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: ${{ secrets.VAULT_ADDR }}
+          method: approle
+          roleId: ${{ secrets.VAULT_ROLE_ID }}
+          secretId: ${{ secrets.VAULT_SECRET_ID }}
+          secrets: |
+            secret/data/ci/emalyami/ssh private_key | SSH_PRIVATE_KEY ;
+            secret/data/ci/emalyami/ssh known_hosts | SSH_KNOWN_HOSTS
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy to ${{ matrix.server.name }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ema-deploy@${{ matrix.server.ip }} \
+            "sudo systemctl stop ${{ inputs.service_name }}.service || true"
+          
+          ssh -i ~/.ssh/deploy_key ema-deploy@${{ matrix.server.ip }} \
+            "[ -f ${{ inputs.working_dir }}/${{ inputs.jar_name }} ] && cp ${{ inputs.working_dir }}/${{ inputs.jar_name }} ${{ inputs.working_dir }}/${{ inputs.jar_name }}.bak || true"
+          
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ inputs.jar_name }} \
+            ema-deploy@${{ matrix.server.ip }}:${{ inputs.working_dir }}/
+          
+          ssh -i ~/.ssh/deploy_key ema-deploy@${{ matrix.server.ip }} \
+            "chmod 644 ${{ inputs.working_dir }}/${{ inputs.jar_name }}"
+          
+          ssh -i ~/.ssh/deploy_key ema-deploy@${{ matrix.server.ip }} \
+            "sudo systemctl daemon-reload && sudo systemctl start ${{ inputs.service_name }}.service"
+
+      - name: Health check on ${{ matrix.server.name }}
+        run: |
+          sleep 15
+          ssh -i ~/.ssh/deploy_key ema-deploy@${{ matrix.server.ip }} \
+            "sudo systemctl is-active --quiet ${{ inputs.service_name }}.service && echo '✓ ${{ matrix.server.name }} healthy' || exit 1"
