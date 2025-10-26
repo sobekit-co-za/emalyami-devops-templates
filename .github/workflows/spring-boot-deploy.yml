@@ -15,7 +15,7 @@ on:
       java_version:
         required: false
         type: string
-        default: '17'
+        default: '8'  # Changed from '17' to '8'
     secrets:
       VAULT_ADDR:
         required: true
