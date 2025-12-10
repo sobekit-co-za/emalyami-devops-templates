@@ -85,6 +85,7 @@ jobs:
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          ssh-keygen -R ${{matrix.server.ip}}
 
       - name: Deploy to ${{ matrix.server.name }}
         run: |
