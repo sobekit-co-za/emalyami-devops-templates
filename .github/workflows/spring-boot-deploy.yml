@@ -15,7 +15,7 @@ on:
       java_version:
         required: false
         type: string
-        default: '8'  # Changed from '17' to '8'
+        default: '8'
     secrets:
       VAULT_ADDR:
         required: true
@@ -55,6 +55,8 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      SSH_AUTH_SOCK: /dev/null
     strategy:
       matrix:
         server:
@@ -86,9 +88,6 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
-          
-          # Disable SSH agent
-          unset SSH_AUTH_SOCK
       
       - name: Deploy to ${{ matrix.server.name }}
         run: |
@@ -112,4 +111,3 @@ jobs:
           sleep 15
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes ema-deploy@${{ matrix.server.ip }} \
             "sudo systemctl is-active --quiet ${{ inputs.service_name }}.service && echo '✓ ${{ matrix.server.name }} healthy' || exit 1"
-
