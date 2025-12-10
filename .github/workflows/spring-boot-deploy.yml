@@ -84,27 +84,32 @@ jobs:
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-
+          echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          
+          # Disable SSH agent
+          unset SSH_AUTH_SOCK
+      
       - name: Deploy to ${{ matrix.server.name }}
         run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ema-deploy@${{ matrix.server.ip }} \
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes ema-deploy@${{ matrix.server.ip }} \
             "sudo systemctl stop ${{ inputs.service_name }}.service || true"
           
-          ssh -i ~/.ssh/deploy_key ema-deploy@${{ matrix.server.ip }} \
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes ema-deploy@${{ matrix.server.ip }} \
             "[ -f ${{ inputs.working_dir }}/${{ inputs.jar_name }} ] && cp ${{ inputs.working_dir }}/${{ inputs.jar_name }} ${{ inputs.working_dir }}/${{ inputs.jar_name }}.bak || true"
           
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ inputs.jar_name }} \
+          scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes ${{ inputs.jar_name }} \
             ema-deploy@${{ matrix.server.ip }}:${{ inputs.working_dir }}/
           
-          ssh -i ~/.ssh/deploy_key ema-deploy@${{ matrix.server.ip }} \
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes ema-deploy@${{ matrix.server.ip }} \
             "chmod 644 ${{ inputs.working_dir }}/${{ inputs.jar_name }}"
           
-          ssh -i ~/.ssh/deploy_key ema-deploy@${{ matrix.server.ip }} \
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes ema-deploy@${{ matrix.server.ip }} \
             "sudo systemctl daemon-reload && sudo systemctl start ${{ inputs.service_name }}.service"
-
+      
       - name: Health check on ${{ matrix.server.name }}
         run: |
           sleep 15
-          ssh -i ~/.ssh/deploy_key ema-deploy@${{ matrix.server.ip }} \
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes ema-deploy@${{ matrix.server.ip }} \
             "sudo systemctl is-active --quiet ${{ inputs.service_name }}.service && echo '✓ ${{ matrix.server.name }} healthy' || exit 1"
+
